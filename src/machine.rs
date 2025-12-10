@@ -1,10 +1,11 @@
-use nalgebra::SVector;
 use std::collections::VecDeque;
 
+use good_lp::{Expression, ProblemVariables, Solution, SolverModel, highs, variable};
+
 type LightPos = usize;
-type Joltages = SVector<isize, MAX_JOLTAGES>;
+type Joltages = Vec<usize>;
 type ButtonIdx = Vec<LightPos>;
-type Button = SVector<isize, MAX_LIGHTS_PER_BUTTON>;
+type Button = Vec<usize>;
 
 const MAX_LIGHTS: usize = 10;
 const MAX_LIGHTS_PER_BUTTON: usize = MAX_LIGHTS;
@@ -45,12 +46,10 @@ pub struct Machine {
 
 impl Machine {
     pub fn new(input: &str) -> Self {
-        let mut buttons: Vec<Vec<LightPos>> = Vec::with_capacity(MAX_BUTTONS);
+        let mut buttons: Vec<Vec<LightPos>> = Vec::new();
         let mut button_lights_vec: Vec<LightPos> = Vec::with_capacity(MAX_LIGHTS_PER_BUTTON);
         let mut lights: Vec<bool> = Vec::with_capacity(MAX_LIGHTS);
         let mut current_joltage: String = String::new();
-        let mut joltages: Joltages = SVector::<isize, MAX_LIGHTS>::zeros();
-        let mut joltage_idx: usize = 0;
 
         let mut char_iter = input.chars();
 
@@ -75,6 +74,9 @@ impl Machine {
             }
         }
 
+        let mut joltage_idx: usize = 0;
+        let mut joltages: Joltages = vec![0; lights.len()];
+
         // Joltage
         for c in &mut char_iter {
             match c {
@@ -92,7 +94,7 @@ impl Machine {
         buttons.sort_unstable_by_key(|b| b.len() as isize);
         let mut button_arrays: Vec<Button> = Vec::with_capacity(buttons.len());
         for button in &buttons {
-            button_arrays.push(Self::generate_button_arr(button));
+            button_arrays.push(Self::generate_button_arr(button, lights.len()));
         }
 
         Self {
@@ -105,98 +107,147 @@ impl Machine {
         }
     }
 
-    fn generate_button_arr(idx_button: &ButtonIdx) -> Button {
-        let mut ret_val = SVector::<isize, MAX_LIGHTS>::zeros();
+    fn generate_button_arr(idx_button: &ButtonIdx, size: usize) -> Button {
+        let mut ret_val = vec![0; size];
         for idx in idx_button {
             ret_val[*idx] = 1;
         }
         ret_val
     }
 
-    pub fn min_presses_to_get_joltage(&mut self) -> Option<u64> {
-        let mut min_presses: Option<u64> = None;
+    // Praise be to wilkotom: https://github.com/wilkotom/AdventOfCode/blob/main/rust/2025/day10/src/main.rs
+    pub fn min_presses_to_get_joltage_good_lp(&self) -> u64 {
+        // Define variables to tweak
+        let mut vars = ProblemVariables::new();
+        let mut button_presses = Vec::new();
+        for _ in 0..self.buttons.len() {
+            let variable = vars.add(variable().min(0).integer());
+            button_presses.push(variable);
+        }
 
-        let mut idx_to_remove: Vec<usize> = Vec::new();
-        for (idx, button) in &mut self.button_arrays.iter().enumerate() {
-            // Check to ensure a button press won't make it go negative
-            if self.joltages.iter().zip(button).any(|(j, b)| b > j) {
-                idx_to_remove.push(idx);
+        // Define problem to solve (and select solver; highs in this case)
+        let mut problem = vars
+            .minimise(button_presses.iter().sum::<Expression>())
+            .using(highs);
+
+        // Create a vector where each element is a expression with capacity for every button, then
+        // the vector is joltages long. So if you have 5 buttons for 10 joltages, this creates a 10
+        // element array where each element is an expression with room for 5 buttons per expression
+        let mut expressions =
+            vec![Expression::with_capacity(self.buttons.len()); self.joltages.len()];
+
+        // Each expression in the above gets a variable for each button push. This is relying on
+        // the self.buttons array containing the correct indexes for the indexing in each
+        // expression. The result of this should be each expression vector being linked to the
+        // correct combination of variables, and each element in the overall vector corresponding
+        // to a given joltage. Row is a joltage, column is a button (variable)
+        for button_pos in 0..self.buttons.len() {
+            for &joltage_pos in self.buttons[button_pos].iter() {
+                expressions[joltage_pos] += button_presses[button_pos];
             }
         }
 
-        idx_to_remove.reverse();
-
-        for idx in idx_to_remove {
-            self.button_arrays.remove(idx);
+        // For each expression row (joltage row) and target joltage, add a constraint defining that
+        // the expression should match the joltage
+        for (e, &j) in expressions.into_iter().zip(&self.joltages) {
+            problem.add_constraint(e.eq(j as f64));
         }
 
-        if self.button_arrays.is_empty() {
-            if self.joltages.abs().max() == 0 {
-                return Some(0);
-            } else {
-                // println!("Reached the end but no cigar");
-                return None;
-            }
-        }
+        // SOLVE!
+        let solution = problem.solve().unwrap();
 
-        let mut max_button_presses = 0isize;
-        let mut button = self.button_arrays[0];
-        while !self.button_arrays.is_empty() {
-            button = self.button_arrays.pop().unwrap();
-            // println!("Buttons available: {}", self.button_arrays.len());
-
-            // Check to ensure a button press won't make it go negative
-            if self.joltages.iter().zip(&button).any(|(j, b)| b > j) {
-                // println!("CAUGHT ONE");
-                continue;
-            }
-
-            max_button_presses = button
-                .component_mul(&self.joltages)
-                .iter()
-                .filter(|&&x| x != 0)
-                .min()
-                .copied()
-                .unwrap_or(0);
-
-            if max_button_presses != 0 {
-                // println!("Max presses found: {}", max_button_presses);
-                break;
-            }
-        }
-
-        for presses in (0..=max_button_presses).rev() {
-            let mut clone_machine = self.clone();
-            if (clone_machine.joltages - button * presses).min() < 0 {
-                dbg!(max_button_presses);
-                dbg!(&clone_machine.joltages);
-                dbg!(presses);
-                dbg!(button);
-                panic!();
-            }
-            clone_machine.joltages -= button * presses;
-            if let Some(mut local_min) = clone_machine.min_presses_to_get_joltage() {
-                // println!(
-                //     "Found ONE! on obj with {} buttons left",
-                //     self.button_arrays.len()
-                // );
-                local_min += presses as u64;
-                if min_presses.is_none() {
-                    // println!("Storing local min: {}", local_min);
-                    min_presses = Some(local_min);
-                }
-                if local_min < min_presses.unwrap() {
-                    min_presses = Some(local_min);
-                }
-            }
-        }
-        // if let some(presses) = min_presses {
-        //     // println!("RETURNING {}", presses);
-        // }
-        //     println!("Returning none");
-        // }
-        min_presses
+        // Use each variable to pass into the solver's `solve` method, which returns an f64. Sum it
+        // up and cast it!
+        button_presses
+            .iter()
+            .map(|v| solution.value(*v))
+            .sum::<f64>() as u64
     }
+
+    // pub fn min_presses_to_get_joltage(&mut self) -> Option<u64> {
+    //     let mut min_presses: Option<u64> = None;
+    //
+    //     let mut idx_to_remove: Vec<usize> = Vec::new();
+    //     for (idx, button) in &mut self.button_arrays.iter().enumerate() {
+    //         // Check to ensure a button press won't make it go negative
+    //         if self.joltages.iter().zip(button).any(|(j, b)| b > j) {
+    //             idx_to_remove.push(idx);
+    //         }
+    //     }
+    //
+    //     idx_to_remove.reverse();
+    //
+    //     for idx in idx_to_remove {
+    //         self.button_arrays.remove(idx);
+    //     }
+    //
+    //     if self.button_arrays.is_empty() {
+    //         if self.joltages.abs().max() == 0 {
+    //             return Some(0);
+    //         } else {
+    //             // println!("Reached the end but no cigar");
+    //             return None;
+    //         }
+    //     }
+    //
+    //     let mut max_button_presses = 0isize;
+    //     let mut button = self.button_arrays[0];
+    //     while !self.button_arrays.is_empty() {
+    //         button = self.button_arrays.pop().unwrap();
+    //         // println!("Buttons available: {}", self.button_arrays.len());
+    //
+    //         // Check to ensure a button press won't make it go negative
+    //         if self.joltages.iter().zip(&button).any(|(j, b)| b > j) {
+    //             // println!("CAUGHT ONE");
+    //             continue;
+    //         }
+    //
+    //         max_button_presses = button
+    //             .component_mul(&self.joltages)
+    //             .iter()
+    //             .filter(|&&x| x != 0)
+    //             .min()
+    //             .copied()
+    //             .unwrap_or(0);
+    //
+    //         if max_button_presses != 0 {
+    //             // println!("Max presses found: {}", max_button_presses);
+    //             break;
+    //         }
+    //     }
+    //
+    //     for presses in (0..=max_button_presses).rev() {
+    //         let mut clone_machine = self.clone();
+    //         if (clone_machine.joltages - button * presses).min() < 0 {
+    //             dbg!(max_button_presses);
+    //             dbg!(&clone_machine.joltages);
+    //             dbg!(presses);
+    //             dbg!(button);
+    //             panic!();
+    //         }
+    //         clone_machine.joltages -= button * presses;
+    //         if let Some(mut local_min) = clone_machine.min_presses_to_get_joltage() {
+    //             // println!(
+    //             //     "Found ONE! on obj with {} buttons left",
+    //             //     self.button_arrays.len()
+    //             // );
+    //             local_min += presses as u64;
+    //             if min_presses.is_none() {
+    //                 // println!("Storing local min: {}", local_min);
+    //                 min_presses = Some(local_min);
+    //             }
+    //             if local_min < min_presses.unwrap() {
+    //                 min_presses = Some(local_min);
+    //             }
+    //         }
+    //     }
+    //     // if let some(presses) = min_presses {
+    //     //     // println!("RETURNING {}", presses);
+    //     // }
+    //     //     println!("Returning none");
+    //     // }
+    //     min_presses
+    // }
 
     pub fn min_presses_to_turn_off(&mut self) -> u64 {
         let mut possibilities: VecDeque<Self> = VecDeque::new();

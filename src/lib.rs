@@ -17,17 +17,11 @@ pub fn solve_pt1(input_file_text: &str) -> u64 {
 
 pub fn solve_pt2(input_file_text: &str) -> u64 {
     let mut total = 0u64;
-    let mut my_machine_shop = MachineShop::new(input_file_text);
-    let mut machine_counter = 0u64;
+    let my_machine_shop = MachineShop::new(input_file_text);
     let num_of_machines = my_machine_shop.machines.len();
 
-    for mut machine in my_machine_shop.machines {
-        machine_counter += 1;
-        total += machine.min_presses_to_get_joltage().unwrap();
-        println!(
-            "Machine {} of {} complete. Total is at: {}",
-            machine_counter, num_of_machines, total
-        );
+    for (machine_counter, machine) in my_machine_shop.machines.into_iter().enumerate() {
+        total += machine.min_presses_to_get_joltage_good_lp();
     }
 
     total
