@@ -1,7 +1,8 @@
+use std::collections::VecDeque;
+
 type LightPos = usize;
 type Joltage = u32;
 type Button = Vec<LightPos>;
-type ButtonGroup = Vec<Button>;
 
 const MAX_LIGHTS: usize = 20;
 const MAX_LIGHTS_PER_BUTTON: usize = 20;
@@ -9,9 +10,14 @@ const MAX_BUTTONS: usize = 20;
 const MAX_JOLTAGES: usize = 20;
 const MAX_MACHINES: usize = 200;
 
+enum Possibilites {
+    Machines(Vec<Machine>),
+    Success,
+}
+
 #[derive(Debug)]
 pub struct MachineShop {
-    machines: Vec<Machine>,
+    pub machines: Vec<Machine>,
 }
 
 impl MachineShop {
@@ -25,12 +31,13 @@ impl MachineShop {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Machine {
     lights: Vec<bool>,
     lights_expected: Vec<bool>,
-    buttons: Vec<ButtonGroup>,
+    buttons: Vec<Button>,
     joltage: Vec<Joltage>,
+    button_presses: u64,
 }
 
 impl Machine {
@@ -50,55 +57,76 @@ impl Machine {
             }
         }
 
-        buttons.sort_unstable_by_key(|b| -(b.len() as isize));
+        buttons.sort_unstable_by_key(|b| b.len() as isize);
 
-        let mut grouped_buttons: Vec<ButtonGroup> = Vec::with_capacity(MAX_BUTTONS);
-
-        let mut last_size = buttons[0].len();
-        let mut current_group: ButtonGroup = vec![];
-
-        for mut button in buttons {
-            let current_button_size = button.len();
-            if current_button_size == last_size {
-                current_group.push(std::mem::take(&mut button));
-            } else {
-                grouped_buttons.push(std::mem::take(&mut current_group));
-                current_group = vec![std::mem::take(&mut button)];
-                last_size = current_button_size;
-            }
-        }
-        grouped_buttons.push(current_group);
+        // lights.reverse();
 
         Self {
             lights_expected: vec![false; lights.len()],
             lights,
-            buttons: grouped_buttons,
+            buttons,
             joltage: vec![],
+            button_presses: 0,
         }
     }
 
-    fn press_button(&self, button: &Button, input_light_pattern: &[bool]) -> Vec<bool> {
-        let mut light_pattern = input_light_pattern.to_vec();
-
-        for pos in button {
-            light_pattern[*pos] = !light_pattern[*pos];
+    pub fn min_presses_to_turn_off(&mut self) -> u64 {
+        let mut possibilities: VecDeque<Self> = VecDeque::new();
+        let mut pass_counter = 0u64;
+        if let Some(successful_button_presses) = self.find_possibilites(&mut possibilities) {
+            return successful_button_presses;
         }
 
-        light_pattern
+        while !&possibilities.is_empty() {
+            // dbg!(&possibilities.len());
+            let mut child_possibility = possibilities.pop_front().unwrap();
+            pass_counter += 1;
+            // dbg!(poss_counter);
+
+            if let Some(successful_button_presses) =
+                child_possibility.find_possibilites(&mut possibilities)
+            {
+                return successful_button_presses;
+            }
+
+            // SAFETY!!!
+            if pass_counter > 100000000 {
+                panic!("TOO MANY POSSIBILITIES");
+            }
+        }
+        dbg!(pass_counter);
+        panic!("Not possible!!!")
     }
 
-    fn score_lights(&self, possible_lights: &[bool]) -> usize {
-        let mut score: usize = 0;
+    fn find_possibilites(&mut self, possibilities: &mut VecDeque<Self>) -> Option<u64> {
+        for button_pos in (0..self.buttons.len()).rev() {
+            let mut possible_machine = self.clone();
+            possible_machine.press_button(button_pos);
 
-        possible_lights
+            if possible_machine.lights_are_correct() {
+                return Some(possible_machine.button_presses);
+            } else if !possible_machine.buttons.is_empty() {
+                possibilities.push_back(possible_machine);
+            }
+        }
+        None
+    }
+
+    fn press_button(&mut self, button_idx: usize) {
+        for pos in &self.buttons[button_idx] {
+            self.lights[*pos] = !self.lights[*pos];
+        }
+        // dbg!(self.button_presses);
+        self.buttons.remove(button_idx);
+        self.button_presses += 1;
+    }
+
+    fn lights_are_correct(&self) -> bool {
+        // dbg!(&self.lights);
+        self.lights
             .iter()
             .zip(&self.lights_expected)
-            .for_each(|(a, b)| {
-                if *a == *b {
-                    score += 1;
-                }
-            });
-
-        score
+            .map(|(a, b)| *a == *b)
+            .fold(true, |acc, x| acc & x)
     }
 }

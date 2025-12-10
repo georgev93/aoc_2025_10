@@ -5,9 +5,14 @@ mod machine;
 use crate::machine::{Machine, MachineShop};
 
 pub fn solve_pt1(input_file_text: &str) -> u64 {
-    let my_machine_shop = MachineShop::new(input_file_text);
-    dbg!(my_machine_shop);
-    1
+    let mut total = 0u64;
+    let mut my_machine_shop = MachineShop::new(input_file_text);
+
+    for mut machine in my_machine_shop.machines {
+        total += machine.min_presses_to_turn_off();
+    }
+
+    total
 }
 
 pub fn solve_pt2(input_file_text: &str) -> u64 {
@@ -22,9 +27,9 @@ pub fn solve(input_file_text: &str) -> (u64, u64) {
 mod tests {
     use super::*;
 
-    const EXAMPLE_PT1: u64 = 0;
+    const EXAMPLE_PT1: u64 = 7;
     const EXAMPLE_PT2: u64 = 0;
-    const ACTUAL_PT1: u64 = 0;
+    const ACTUAL_PT1: u64 = 390;
     const ACTUAL_PT2: u64 = 0;
 
     // #[test]
