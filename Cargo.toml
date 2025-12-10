@@ -30,3 +30,6 @@ inherits = "release"
 opt-level = "z"
 lto = true
 
+[dependencies]
+nalgebra = "0.34.1"
+
