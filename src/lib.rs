@@ -3,6 +3,8 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
 use std::thread;
 
+use rayon::prelude::*;
+
 use crate::file_parser::FileParser;
 
 mod machine;
@@ -10,31 +12,23 @@ use crate::machine::{Machine, MachineShop};
 
 pub fn solve_pt1(input_file_text: &str) -> u64 {
     let my_machine_shop = MachineShop::new(input_file_text);
-    let total = Arc::new(AtomicU64::new(0));
+    // let total = Arc::new(AtomicU64::new(0));
 
-    thread::scope(|s| {
-        for mut machine in my_machine_shop.machines {
-            let total_clone = total.clone();
-            s.spawn(move || {
-                let local_result = machine.min_presses_to_turn_off();
-                total_clone.fetch_add(local_result, std::sync::atomic::Ordering::SeqCst);
-            });
-        }
-    });
-
-    total.load(std::sync::atomic::Ordering::Acquire)
+    my_machine_shop
+        .machines
+        .into_par_iter()
+        .map(|mut machine| machine.min_presses_to_turn_off())
+        .sum()
 }
 
 pub fn solve_pt2(input_file_text: &str) -> u64 {
-    let mut total = 0u64;
     let my_machine_shop = MachineShop::new(input_file_text);
-    let num_of_machines = my_machine_shop.machines.len();
 
-    for (machine_counter, machine) in my_machine_shop.machines.into_iter().enumerate() {
-        total += machine.min_presses_to_get_joltage_good_lp();
-    }
-
-    total
+    my_machine_shop
+        .machines
+        .into_par_iter()
+        .map(|machine| machine.min_presses_to_get_joltage_good_lp())
+        .sum()
 }
 
 pub fn solve(input_file_text: &str) -> (u64, u64) {

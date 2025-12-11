@@ -33,4 +33,5 @@ lto = true
 [dependencies]
 good_lp = { version = "1.14.2", features = ["highs"], default-features = false }
 nalgebra = "0.34.1"
+rayon = "1.11.0"
 

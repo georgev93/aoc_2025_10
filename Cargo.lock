@@ -39,6 +39,7 @@ dependencies = [
  "criterion",
  "good_lp",
  "nalgebra",
+ "rayon",
 ]
 
 [[package]]
