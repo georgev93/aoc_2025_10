@@ -1,18 +1,28 @@
 pub mod file_parser;
+use std::sync::Arc;
+use std::sync::atomic::AtomicU64;
+use std::thread;
+
 use crate::file_parser::FileParser;
 
 mod machine;
 use crate::machine::{Machine, MachineShop};
 
 pub fn solve_pt1(input_file_text: &str) -> u64 {
-    let mut total = 0u64;
     let my_machine_shop = MachineShop::new(input_file_text);
+    let total = Arc::new(AtomicU64::new(0));
 
-    for mut machine in my_machine_shop.machines {
-        total += machine.min_presses_to_turn_off();
-    }
+    thread::scope(|s| {
+        for mut machine in my_machine_shop.machines {
+            let total_clone = total.clone();
+            s.spawn(move || {
+                let local_result = machine.min_presses_to_turn_off();
+                total_clone.fetch_add(local_result, std::sync::atomic::Ordering::SeqCst);
+            });
+        }
+    });
 
-    total
+    total.load(std::sync::atomic::Ordering::Acquire)
 }
 
 pub fn solve_pt2(input_file_text: &str) -> u64 {
