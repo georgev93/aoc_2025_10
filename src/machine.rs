@@ -251,29 +251,19 @@ impl Machine {
 
     pub fn min_presses_to_turn_off(&mut self) -> u64 {
         let mut possibilities: VecDeque<Self> = VecDeque::new();
-        let mut pass_counter = 0u64;
         if let Some(successful_button_presses) = self.find_possibilites(&mut possibilities) {
             return successful_button_presses;
         }
 
         while !&possibilities.is_empty() {
-            // dbg!(&possibilities.len());
             let mut child_possibility = possibilities.pop_front().unwrap();
-            pass_counter += 1;
-            // dbg!(poss_counter);
 
             if let Some(successful_button_presses) =
                 child_possibility.find_possibilites(&mut possibilities)
             {
                 return successful_button_presses;
             }
-
-            // // SAFETY!!!
-            // if pass_counter > 100000000 {
-            //     panic!("TOO MANY POSSIBILITIES");
-            // }
         }
-        dbg!(pass_counter);
         panic!("Not possible!!!")
     }
 

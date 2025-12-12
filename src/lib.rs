@@ -32,7 +32,21 @@ pub fn solve_pt2(input_file_text: &str) -> u64 {
 }
 
 pub fn solve(input_file_text: &str) -> (u64, u64) {
-    (0, 0)
+    let my_machine_shop = MachineShop::new(input_file_text);
+    let machines = &my_machine_shop.machines;
+
+    let pt2 = machines
+        .into_par_iter()
+        .map(|machine| machine.min_presses_to_get_joltage_good_lp())
+        .sum();
+
+    let pt1 = my_machine_shop
+        .machines
+        .into_par_iter()
+        .map(|mut machine| machine.min_presses_to_turn_off())
+        .sum();
+
+    (pt1, pt2)
 }
 
 #[cfg(test)]
@@ -42,7 +56,7 @@ mod tests {
     const EXAMPLE_PT1: u64 = 7;
     const EXAMPLE_PT2: u64 = 33;
     const ACTUAL_PT1: u64 = 390;
-    const ACTUAL_PT2: u64 = 0;
+    const ACTUAL_PT2: u64 = 14677;
 
     // #[test]
     // fn example() {
@@ -59,13 +73,13 @@ mod tests {
         assert_eq!(solve_pt2(my_file.get_str()), EXAMPLE_PT2);
     }
 
-    // #[test]
-    // fn actual() {
-    //     let my_file = FileParser::new("data/input.txt");
-    //     let (part_1, part_2) = solve(my_file.get_str());
-    //     assert_eq!(part_1, ACTUAL_PT1);
-    //     assert_eq!(part_2, ACTUAL_PT2);
-    // }
+    #[test]
+    fn actual() {
+        let my_file = FileParser::new("data/input.txt");
+        let (part_1, part_2) = solve(my_file.get_str());
+        assert_eq!(part_1, ACTUAL_PT1);
+        assert_eq!(part_2, ACTUAL_PT2);
+    }
     //
     // #[test]
     // fn actual_pts() {
