@@ -164,6 +164,71 @@ impl Machine {
             .sum::<f64>() as u64
     }
 
+    // Praise be to wilkotom: https://github.com/wilkotom/AdventOfCode/blob/main/rust/2025/day10/src/main.rs
+    pub fn min_presses_to_get_lights(&self) -> u64 {
+        // ========== SECTION 1: Add Variables ==========
+        // Define variables to tweak
+        let mut vars = ProblemVariables::new();
+
+        // Dependent variable 1, button pushes
+        let mut button_presses = Vec::new();
+        for _ in 0..self.buttons.len() {
+            let pushes = vars.add(variable().min(0).integer());
+            button_presses.push(pushes);
+        }
+
+        // Dependent variable 2, pairs of button pushes (auxiliary variable we add to turn modulo
+        // into linear math
+        let mut pairs_vars = Vec::with_capacity(self.lights.len());
+        for _ in 0..self.lights.len() {
+            let pairs = vars.add(variable().min(0).integer());
+            pairs_vars.push(pairs);
+        }
+
+        // ========== SECTION 2: Define Expressions ==========
+
+        // Create a vector where each element is a expression with capacity for every button, then
+        // the vector is joltages long. So if you have 5 buttons for 10 joltages, this creates a 10
+        // element array where each element is an expression with room for 5 buttons per expression
+        let mut expressions =
+            vec![Expression::with_capacity(self.buttons.len()); self.lights.len()];
+
+        // Each expression in the above gets a variable for each button push. This is relying on
+        // the self.buttons array containing the correct indexes for the indexing in each
+        // expression. The result of this should be each expression vector being linked to the
+        // correct combination of variables, and each element in the overall vector corresponding
+        // to a given joltage. Row is a joltage, column is a button (variable)
+        for (button_pos, button) in self.buttons.iter().enumerate() {
+            for &light_pos in button {
+                expressions[light_pos] += button_presses[button_pos];
+            }
+        }
+
+        // ========== SECTION 3: Define Problem ==========
+
+        // Define problem to solve (and select solver; highs in this case)
+        let mut problem = vars
+            .minimise(button_presses.iter().sum::<Expression>())
+            .using(highs);
+
+        // ========== SECTION 4: Define Constraints ==========
+        for (idx, e) in expressions.into_iter().enumerate() {
+            let desired_parity = if self.lights[idx] { 1.0 } else { 0.0 };
+            let pairs = pairs_vars[idx];
+            problem.add_constraint(e.eq((2.0 * pairs) + desired_parity));
+        }
+
+        // SOLVE!
+        let solution = problem.solve().unwrap();
+
+        // Use each variable to pass into the solver's `solve` method, which returns an f64. Sum it
+        // up and cast it!
+        button_presses
+            .iter()
+            .map(|v| solution.value(*v))
+            .sum::<f64>() as u64
+    }
+
     // pub fn min_presses_to_get_joltage(&mut self) -> Option<u64> {
     //     let mut min_presses: Option<u64> = None;
     //
